@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "version": "0.1-poc",
+    "description": "Lógica de IA para Ole - Fútbol 5. Situaciones, actitudes y recetas declarativas."
+  },
+  "note": "Ver index.html en el repositorio para el prototipo completo con la IA embebida."
+}
