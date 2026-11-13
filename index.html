@@ -1,1 +1,404 @@
-PLACEHOLDER_WILL_REPLACE
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Ole - Prototipo Fútbol 5</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; }
+  h1 { font-size: 1.4rem; margin: 12px 0 4px; }
+  #info { font-size: 0.9rem; margin-bottom: 8px; text-align: center; max-width: 900px; }
+  canvas { border: 2px solid #333; background: #1a3a1a; cursor: crosshair; }
+  .controls { margin: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button { padding: 8px 16px; font-size: 1rem; cursor: pointer; background: #2a5; color: white; border: none; border-radius: 4px; }
+  button:hover { background: #3b6; }
+  button.secondary { background: #555; }
+  button.secondary:hover { background: #666; }
+  #status { margin-top: 6px; font-size: 0.85rem; color: #aaa; max-width: 900px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Ole — Prototipo Fútbol 5</h1>
+<div id="info">Seleccioná un jugador → elegí acción (correr / pasar / tirar) con los iconos. Correr: puntos dentro del círculo. Pasar: a un jugador o punto. Tirar: al arco. ATP se restauran cada turno.<br><b>Botón "Plan IA (Equipo B)"</b>: la IA detecta la situación y genera un plan para el equipo rojo.</div>
+<canvas id="c" width="900" height="560"></canvas>
+<div class="controls">
+  <button id="btnExecute">Ejecutar turno</button>
+  <button id="btnAI" class="secondary">Plan IA (Equipo B)</button>
+  <button id="btnClear" class="secondary">Limpiar planes</button>
+  <button id="btnReset" class="secondary">Reiniciar (nuevo turno)</button>
+</div>
+<div id="status">Clic en un jugador para seleccionarlo y ver sus acciones.</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const FIELD = { x: 40, y: 30, w: 820, h: 500 };
+const PIXELS_PER_METER = 18;
+const ATP_START = 4;
+const GOAL_LEFT = { x: FIELD.x, y: FIELD.y + FIELD.h/2 };
+const GOAL_RIGHT = { x: FIELD.x + FIELD.w, y: FIELD.y + FIELD.h/2 };
+let players = [];
+let selected = null;
+let actionMode = null;
+let executing = false;
+const ACTIONS = [
+  { id: 'run', label: 'Correr', icon: '🏃', angle: -Math.PI/2 },
+  { id: 'pass', label: 'Pasar', icon: '➡️', angle: 0 },
+  { id: 'shoot', label: 'Tirar', icon: '⚽', angle: Math.PI/2 },
+];
+let ball = { x: 250, y: 280, owner: null };
+function initPlayers() {
+  players = [
+    { id: 1, team: 'A', x: 250, y: 280, color: '#3af', name: 'A1', hasBall: true, plan: [], speed: 5.0, dribble: 7, defense: 4, pass: 6, shoot: 6.5, atp: ATP_START, atpMax: ATP_START },
+    { id: 2, team: 'A', x: 180, y: 180, color: '#3af', name: 'A2', hasBall: false, plan: [], speed: 5.5, dribble: 5, defense: 5, pass: 7, shoot: 5, atp: ATP_START, atpMax: ATP_START },
+    { id: 3, team: 'A', x: 180, y: 380, color: '#3af', name: 'A3', hasBall: false, plan: [], speed: 4.6, dribble: 6, defense: 6, pass: 5.5, shoot: 4, atp: ATP_START, atpMax: ATP_START },
+    { id: 4, team: 'A', x: 320, y: 150, color: '#3af', name: 'A4', hasBall: false, plan: [], speed: 5.2, dribble: 4.5, defense: 7, pass: 6, shoot: 5, atp: ATP_START, atpMax: ATP_START },
+    { id: 5, team: 'A', x: 320, y: 410, color: '#3af', name: 'A5', hasBall: false, plan: [], speed: 4.8, dribble: 5.5, defense: 5.5, pass: 6.5, shoot: 7, atp: ATP_START, atpMax: ATP_START },
+    { id: 6, team: 'B', x: 620, y: 280, color: '#f55', name: 'B1', hasBall: false, plan: [], speed: 5.1, dribble: 6, defense: 5, pass: 6, shoot: 6, atp: ATP_START, atpMax: ATP_START },
+    { id: 7, team: 'B', x: 700, y: 180, color: '#f55', name: 'B2', hasBall: false, plan: [], speed: 5.6, dribble: 5.5, defense: 4.5, pass: 7, shoot: 5.5, atp: ATP_START, atpMax: ATP_START },
+    { id: 8, team: 'B', x: 700, y: 380, color: '#f55', name: 'B3', hasBall: false, plan: [], speed: 4.7, dribble: 4, defense: 7.5, pass: 5, shoot: 4.5, atp: ATP_START, atpMax: ATP_START },
+    { id: 9, team: 'B', x: 550, y: 150, color: '#f55', name: 'B4', hasBall: false, plan: [], speed: 5.2, dribble: 6.5, defense: 5.5, pass: 6.5, shoot: 6, atp: ATP_START, atpMax: ATP_START },
+    { id: 10, team: 'B', x: 550, y: 410, color: '#f55', name: 'B5', hasBall: false, plan: [], speed: 4.9, dribble: 5, defense: 6, pass: 5.5, shoot: 7.5, atp: ATP_START, atpMax: ATP_START },
+  ];
+  const carrier = players.find(p => p.hasBall);
+  ball = { x: carrier.x + 12, y: carrier.y - 10, owner: carrier };
+  selected = null;
+  actionMode = null;
+}
+function metersToPixels(m) { return m * PIXELS_PER_METER; }
+function pixelsToMeters(px) { return px / PIXELS_PER_METER; }
+function remainingRange(p) { return Math.max(0, p.atp * p.speed); }
+function getPlanningOrigin(p) {
+  if (p.plan && p.plan.length) {
+    const last = p.plan[p.plan.length - 1];
+    return { x: last.x, y: last.y };
+  }
+  return { x: p.x, y: p.y };
+}
+function drawField() {
+  ctx.fillStyle = '#1e4d2b';
+  ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+  ctx.beginPath();
+  ctx.moveTo(FIELD.x + FIELD.w/2, FIELD.y);
+  ctx.lineTo(FIELD.x + FIELD.w/2, FIELD.y + FIELD.h);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(FIELD.x + FIELD.w/2, FIELD.y + FIELD.h/2, 60, 0, Math.PI*2);
+  ctx.stroke();
+}
+function drawPlayers() {
+  players.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 16, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = selected === p ? '#ff0' : '#000';
+    ctx.lineWidth = selected === p ? 3 : 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.name, p.x, p.y+4);
+    ctx.fillStyle = '#000';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(p.atp.toFixed(1), p.x, p.y + 28);
+    if (p.plan && p.plan.length) {
+      ctx.strokeStyle = p.color;
+      ctx.setLineDash([4,4]);
+      let ox = p.x, oy = p.y;
+      p.plan.forEach(act => {
+        ctx.beginPath();
+        ctx.moveTo(ox, oy);
+        ctx.lineTo(act.x, act.y);
+        ctx.stroke();
+        ox = act.x; oy = act.y;
+      });
+      ctx.setLineDash([]);
+    }
+  });
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, 7, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  if (selected) drawActionIcons(selected);
+}
+function drawActionIcons(p) {
+  const origin = getPlanningOrigin(p);
+  ACTIONS.forEach(act => {
+    const r = 38;
+    const ix = origin.x + Math.cos(act.angle) * r;
+    const iy = origin.y + Math.sin(act.angle) * r;
+    ctx.fillStyle = actionMode === act.id ? '#ff0' : '#333';
+    ctx.beginPath();
+    ctx.arc(ix, iy, 16, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(act.icon, ix, iy+5);
+  });
+  const range = remainingRange(p);
+  if (range > 0) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.arc(origin.x, origin.y, metersToPixels(range), 0, Math.PI*2);
+    ctx.stroke();
+  }
+}
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawField();
+  drawPlayers();
+}
+function getPlayerAt(x, y) {
+  return players.find(p => Math.hypot(p.x - x, p.y - y) < 22);
+}
+function getActionAt(x, y, p) {
+  if (!p) return null;
+  const origin = getPlanningOrigin(p);
+  for (const act of ACTIONS) {
+    const r = 38;
+    const ix = origin.x + Math.cos(act.angle) * r;
+    const iy = origin.y + Math.sin(act.angle) * r;
+    if (Math.hypot(x - ix, y - iy) < 18) return act.id;
+  }
+  return null;
+}
+function updateStatus(msg) { statusEl.textContent = msg; }
+canvas.addEventListener('click', e => {
+  if (executing) return;
+  const rect = canvas.getBoundingClientRect();
+  let x = e.clientX - rect.left;
+  let y = e.clientY - rect.top;
+  if (selected) {
+    const act = getActionAt(x, y, selected);
+    if (act) {
+      actionMode = act;
+      updateStatus('Acción: ' + act.toUpperCase());
+      draw();
+      return;
+    }
+  }
+  const clicked = getPlayerAt(x, y);
+  if (clicked) {
+    selected = clicked;
+    actionMode = 'run';
+    updateStatus('Seleccionado: ' + clicked.name);
+    draw();
+    return;
+  }
+  if (!selected) {
+    updateStatus('Primero seleccioná un jugador.');
+    return;
+  }
+  if (x < FIELD.x || x > FIELD.x + FIELD.w || y < FIELD.y || y > FIELD.y + FIELD.h) return;
+  const origin = getPlanningOrigin(selected);
+  if (actionMode === 'run' || !selected.hasBall) {
+    let distMeters = pixelsToMeters(Math.hypot(x - origin.x, y - origin.y));
+    let cost = distMeters / selected.speed;
+    const maxRange = remainingRange(selected);
+    if (distMeters > maxRange - 0.05) {
+      if (maxRange < 0.2) {
+        updateStatus(selected.name + ' ya no tiene alcance.');
+        return;
+      }
+      const ratio = maxRange / Math.max(distMeters, 0.01);
+      x = origin.x + (x - origin.x) * ratio;
+      y = origin.y + (y - origin.y) * ratio;
+      cost = selected.atp;
+    }
+    if (cost > selected.atp + 0.01) {
+      updateStatus('No alcanza ATP.');
+      return;
+    }
+    selected.plan.push({ x, y, type: 'run', cost });
+    selected.atp = Math.max(0, selected.atp - cost);
+    updateStatus(selected.name + ': correr');
+  } else if (actionMode === 'pass' && selected.hasBall) {
+    const targetPlayer = getPlayerAt(x, y);
+    const passCost = 1.2;
+    if (selected.atp < passCost) {
+      updateStatus('No alcanza ATP para pasar.');
+      return;
+    }
+    selected.plan.push({ x, y, type: 'pass', cost: passCost, target: targetPlayer ? targetPlayer.id : null });
+    selected.atp = Math.max(0, selected.atp - passCost);
+    updateStatus(selected.name + ': pase marcado');
+  } else if (actionMode === 'shoot' && selected.hasBall) {
+    const shootCost = 1.5;
+    if (selected.atp < shootCost) {
+      updateStatus('No alcanza ATP para tirar.');
+      return;
+    }
+    const goal = selected.team === 'A' ? GOAL_RIGHT : GOAL_LEFT;
+    selected.plan.push({ x: goal.x, y: goal.y, type: 'shoot', cost: shootCost });
+    selected.atp = Math.max(0, selected.atp - shootCost);
+    updateStatus(selected.name + ': tiro marcado');
+  }
+  draw();
+});
+document.getElementById('btnExecute').onclick = () => {
+  if (executing) return;
+  const movers = players.filter(p => p.plan && p.plan.length);
+  if (!movers.length) {
+    updateStatus('No hay planes.');
+    return;
+  }
+  executing = true;
+  updateStatus('Ejecutando...');
+  const speedPx = 1.8;
+  const ballSpeed = 4.5;
+  function animate() {
+    let stillMoving = false;
+    let turnEnded = false;
+    movers.forEach(p => {
+      if (turnEnded) return;
+      if (p.plan.length && p.plan[0].type === 'run') {
+        const target = p.plan[0];
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > speedPx) {
+          p.x += (dx / dist) * speedPx;
+          p.y += (dy / dist) * speedPx;
+          stillMoving = true;
+          if (ball.owner === p) {
+            ball.x = p.x + 12;
+            ball.y = p.y - 10;
+          }
+        } else {
+          p.x = target.x;
+          p.y = target.y;
+          p.plan.shift();
+          if (p.plan.length) stillMoving = true;
+        }
+      }
+    });
+    if (!turnEnded) {
+      players.forEach(p => {
+        if (turnEnded) return;
+        if (p.plan.length && (p.plan[0].type === 'pass' || p.plan[0].type === 'shoot')) {
+          const action = p.plan[0];
+          const dx = action.x - ball.x;
+          const dy = action.y - ball.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > ballSpeed) {
+            ball.x += (dx / dist) * ballSpeed;
+            ball.y += (dy / dist) * ballSpeed;
+            stillMoving = true;
+            ball.owner = null;
+          } else {
+            ball.x = action.x;
+            ball.y = action.y;
+            if (action.type === 'pass' && action.target) {
+              const receiver = players.find(pl => pl.id === action.target);
+              if (receiver) {
+                players.forEach(pl => pl.hasBall = false);
+                receiver.hasBall = true;
+                ball.owner = receiver;
+                ball.x = receiver.x + 12;
+                ball.y = receiver.y - 10;
+                turnEnded = true;
+                stillMoving = false;
+                updateStatus('Recepción de ' + receiver.name);
+              }
+            } else if (action.type === 'shoot') {
+              turnEnded = true;
+              stillMoving = false;
+              updateStatus('Tiro ejecutado.');
+            }
+            p.plan.shift();
+          }
+        }
+      });
+    }
+    draw();
+    if (stillMoving && !turnEnded) {
+      requestAnimationFrame(animate);
+    } else {
+      executing = false;
+      players.forEach(p => { p.atp = p.atpMax; p.plan = []; });
+      actionMode = null;
+      if (!turnEnded) updateStatus('Turno ejecutado. ATP restaurados.');
+      draw();
+    }
+  }
+  animate();
+};
+document.getElementById('btnClear').onclick = () => {
+  players.forEach(p => { p.plan = []; p.atp = p.atpMax; });
+  actionMode = null;
+  updateStatus('Planes limpiados.');
+  draw();
+};
+document.getElementById('btnReset').onclick = () => {
+  initPlayers();
+  updateStatus('Reiniciado.');
+  draw();
+};
+const AI_TEAM = 'B';
+function getBallCarrier() { return players.find(p => p.hasBall) || null; }
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function getOwnGoal(team) { return team === 'A' ? GOAL_LEFT : GOAL_RIGHT; }
+function getOpponentGoal(team) { return team === 'A' ? GOAL_RIGHT : GOAL_LEFT; }
+function detectSituation(team) {
+  const carrier = getBallCarrier();
+  const weHave = carrier && carrier.team === team;
+  const ballPos = carrier || ball;
+  const oppGoal = getOpponentGoal(team);
+  const ownGoal = getOwnGoal(team);
+  const dOpp = pixelsToMeters(dist(ballPos, oppGoal));
+  const dOwn = pixelsToMeters(dist(ballPos, ownGoal));
+  const opponentsAhead = players.filter(p => p.team !== team && (team === 'A' ? p.x > ballPos.x : p.x < ballPos.x)).length;
+  if (weHave && opponentsAhead <= 1 && dOpp < 28) return { name: 'Contragolpe', family: 'attack' };
+  if (weHave && dOwn < 14) return { name: 'Salir del fondo', family: 'attack' };
+  if (weHave && opponentsAhead >= 3) return { name: 'Ataque contra bloque', family: 'attack' };
+  if (!weHave && dOpp < 22) return { name: 'Presión alta', family: 'defense' };
+  if (!weHave && dOwn < 20) return { name: 'Bloque bajo', family: 'defense' };
+  return weHave ? { name: 'Ataque estándar', family: 'attack' } : { name: 'Defensa estándar', family: 'defense' };
+}
+function planAI() {
+  if (executing) return;
+  const team = AI_TEAM;
+  const situation = detectSituation(team);
+  const carrier = getBallCarrier();
+  const myPlayers = players.filter(p => p.team === team);
+  myPlayers.forEach(p => { p.plan = []; p.atp = p.atpMax; });
+  if (situation.family === 'attack' && carrier && carrier.team === team) {
+    const dir = team === 'A' ? 1 : -1;
+    const targetX = carrier.x + dir * metersToPixels(6);
+    const targetY = carrier.y;
+    const distM = pixelsToMeters(Math.hypot(targetX - carrier.x, targetY - carrier.y));
+    const cost = Math.min(carrier.atp * 0.7, distM / carrier.speed);
+    if (cost > 0.3) {
+      carrier.plan.push({ x: carrier.x + (targetX - carrier.x) * 0.7, y: targetY, type: 'run', cost });
+      carrier.atp -= cost;
+    }
+    if (pixelsToMeters(dist({x:carrier.x,y:carrier.y}, getOpponentGoal(team))) < 14) {
+      carrier.plan.push({ x: getOpponentGoal(team).x, y: getOpponentGoal(team).y, type: 'shoot', cost: 1.5 });
+    }
+  }
+  myPlayers.filter(p => p !== carrier).forEach((p, i) => {
+    const dir = team === 'A' ? 1 : -1;
+    const tx = p.x + dir * metersToPixels(3 + i);
+    const ty = p.y + (i % 2 === 0 ? 30 : -30);
+    const cost = Math.min(p.atp * 0.6, 1.5);
+    if (cost > 0.2) {
+      p.plan.push({ x: tx, y: ty, type: 'run', cost });
+      p.atp -= cost;
+    }
+  });
+  updateStatus('IA aplicó: ' + situation.name);
+  draw();
+}
+document.getElementById('btnAI').onclick = planAI;
+initPlayers();
+draw();
+</script>
+</body>
+</html>
