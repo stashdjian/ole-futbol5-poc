@@ -1,1 +1,80 @@
-PLACEHOLDER_WILL_REPLACE
+{
+  "meta": {
+    "version": "0.1-poc",
+    "description": "Lógica de IA para Ole - Fútbol 5. Situaciones, actitudes y recetas declarativas."
+  },
+  "situations": [
+    {
+      "id": "counterattack",
+      "name": "Contragolpe",
+      "family": "attack",
+      "detection": {
+        "conditions": [
+          { "type": "we_have_ball", "value": true },
+          { "type": "opponents_ahead_of_ball", "max": 1 },
+          { "type": "ball_distance_to_opponent_goal", "max": 28 }
+        ]
+      }
+    },
+    {
+      "id": "build_from_back",
+      "name": "Salir del fondo",
+      "family": "attack",
+      "detection": {
+        "conditions": [
+          { "type": "we_have_ball", "value": true },
+          { "type": "ball_distance_to_own_goal", "max": 14 }
+        ]
+      }
+    },
+    {
+      "id": "attack_against_block",
+      "name": "Ataque contra bloque",
+      "family": "attack",
+      "detection": {
+        "conditions": [
+          { "type": "we_have_ball", "value": true },
+          { "type": "opponents_ahead_of_ball", "min": 3 }
+        ]
+      }
+    },
+    {
+      "id": "high_press",
+      "name": "Presión alta",
+      "family": "defense",
+      "detection": {
+        "conditions": [
+          { "type": "we_have_ball", "value": false },
+          { "type": "ball_distance_to_opponent_goal", "max": 22 }
+        ]
+      }
+    },
+    {
+      "id": "low_block",
+      "name": "Bloque bajo",
+      "family": "defense",
+      "detection": {
+        "conditions": [
+          { "type": "we_have_ball", "value": false },
+          { "type": "ball_distance_to_own_goal", "max": 20 }
+        ]
+      }
+    },
+    {
+      "id": "default_attack",
+      "name": "Ataque estándar",
+      "family": "attack",
+      "detection": {
+        "conditions": [{ "type": "we_have_ball", "value": true }]
+      }
+    },
+    {
+      "id": "default_defense",
+      "name": "Defensa estándar",
+      "family": "defense",
+      "detection": {
+        "conditions": [{ "type": "we_have_ball", "value": false }]
+      }
+    }
+  ]
+}
